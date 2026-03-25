@@ -170,7 +170,7 @@ export interface DbLead {
   description: string | null;
   score: number;
   fingerprint: string;
-  status: string;
+  status: 'pending' | 'validated' | 'rejected' | 'synced' | 'duplicate';
   validation_notes: string | null;
   hubspot_contact_id: string | null;
   created_at: string;

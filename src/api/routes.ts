@@ -15,6 +15,14 @@ import type { ApiResponse } from '../types';
 const log = createLogger('api:routes');
 export const router = Router();
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function parsePageParams(query: Request['query']): { page: number; pageSize: number } {
+  const page = Math.max(1, parseInt(String(query['page'] ?? '1'), 10));
+  const pageSize = Math.min(100, Math.max(1, parseInt(String(query['pageSize'] ?? '20'), 10)));
+  return { page, pageSize };
+}
+
 // ─── Health ───────────────────────────────────────────────────────────────────
 
 router.get('/health', (_req, res: Response) => {
@@ -124,8 +132,7 @@ router.get('/jobs', requireAuth, async (_req, res: Response) => {
 // ─── List Leads ───────────────────────────────────────────────────────────────
 
 router.get('/leads', requireAuth, async (req: Request, res: Response) => {
-  const page = Math.max(1, parseInt(String(req.query['page'] ?? '1'), 10));
-  const pageSize = Math.min(100, Math.max(1, parseInt(String(req.query['pageSize'] ?? '20'), 10)));
+  const { page, pageSize } = parsePageParams(req.query);
 
   const { leads, total } = await getLeadsPaginated(page, pageSize);
 

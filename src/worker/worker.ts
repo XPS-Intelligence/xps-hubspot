@@ -14,6 +14,7 @@ const log = createLogger('worker');
 
 let isRunning = false;
 let pollTimer: NodeJS.Timeout | null = null;
+let syncTimer: NodeJS.Timeout | null = null;
 
 // ─── Process a single scrape job ──────────────────────────────────────────────
 
@@ -142,7 +143,7 @@ export function startWorker(): void {
   }, config.QUEUE_POLL_INTERVAL_MS);
 
   // Sync to HubSpot every 5 minutes
-  setInterval(() => {
+  syncTimer = setInterval(() => {
     void syncToHubSpot();
   }, 5 * 60 * 1000);
 }
@@ -153,6 +154,11 @@ export function stopWorker(): void {
   if (pollTimer) {
     clearInterval(pollTimer);
     pollTimer = null;
+  }
+
+  if (syncTimer) {
+    clearInterval(syncTimer);
+    syncTimer = null;
   }
 
   log.info('Worker stopped');
@@ -189,11 +195,15 @@ export async function runBatchScrape(urls: string[], type: ScrapeJob['type'] = '
         createdAt: new Date(),
       };
 
-      return new Promise<void>((resolve) => {
+      return new Promise<void>((resolve, reject) => {
         q.enqueue(job, async (j) => {
-          const raw = await scrapeUrl(j);
-          rawResults.push(raw);
-          resolve();
+          try {
+            const raw = await scrapeUrl(j);
+            rawResults.push(raw);
+            resolve();
+          } catch (err) {
+            reject(err);
+          }
         });
       });
     }),

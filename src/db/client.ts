@@ -54,7 +54,7 @@ export async function checkDbHealth(): Promise<boolean> {
     }
     return true;
   } catch (err) {
-    log.error('DB health check threw', { err });
+    log.error('DB health check threw', { error: err instanceof Error ? err.message : String(err) });
     return false;
   }
 }

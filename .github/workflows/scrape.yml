@@ -22,6 +22,9 @@ on:
         default: '3'
         type: string
 
+permissions:
+  contents: read
+
 env:
   NODE_VERSION: '20'
   ARTIFACT_PATH: /tmp/scrape-results.json
@@ -149,6 +152,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: scrape
     if: always()
+    permissions:
+      actions: read
+      contents: read
     steps:
       - name: Download all batch artifacts
         uses: actions/download-artifact@v4
