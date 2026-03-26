@@ -70,7 +70,7 @@ async function extractData(page: Page, url: string): Promise<Partial<RawScrapedD
         ?.content?.trim() ?? '';
 
     // Extract emails
-    const emailRegex = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
+    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
     const bodyText = document.body?.innerText ?? '';
     const hrefEmails = Array.from(document.querySelectorAll('a[href^="mailto:"]'))
       .map((a) => (a as HTMLAnchorElement).href.replace('mailto:', '').split('?')[0]);
