@@ -113,6 +113,15 @@ jobs:
       github.event_name == 'pull_request' &&
       github.event.pull_request.base.ref == 'main'
     steps:
+      # Fail immediately with a clear message if the PR is still a draft.
+      # Auto-merge requires the PR to be "Ready for review"; attempting it on
+      # a draft raises a GraphQL error and wastes CI time.
+      - name: Ensure Pull Request Is Not Draft
+        if: github.event.pull_request.draft == true
+        run: |
+          echo "❌ Cannot auto-merge draft pull requests. Please mark as 'Ready for review'."
+          exit 1
+
       - name: Log auto-merge start
         run: echo "::notice ::All CI checks passed (2/2 test passes). Enabling auto-merge."
 
