@@ -1,0 +1,193 @@
+name: Scheduled Scrape
+
+on:
+  schedule:
+    # Run every day at 08:00 UTC
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: 'Newline-separated URLs to scrape (leave empty to use default list)'
+        required: false
+        type: string
+      scrape_type:
+        description: 'Scrape type'
+        required: false
+        default: 'company'
+        type: choice
+        options: [company, contact, event, custom]
+      parallel_batches:
+        description: 'Number of parallel batches'
+        required: false
+        default: '3'
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '20'
+  ARTIFACT_PATH: /tmp/scrape-results.json
+
+jobs:
+  # ─── Prepare URL batches ──────────────────────────────────────────────────────
+  prepare:
+    name: Prepare Batches
+    runs-on: ubuntu-latest
+    outputs:
+      batches: ${{ steps.split.outputs.batches }}
+      batch_count: ${{ steps.split.outputs.batch_count }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Split URLs into batches
+        id: split
+        run: |
+          if [ -n "${{ github.event.inputs.urls }}" ]; then
+            echo "${{ github.event.inputs.urls }}" > /tmp/urls.txt
+          elif [ -f "scrape-targets.txt" ]; then
+            cp scrape-targets.txt /tmp/urls.txt
+          else
+            # Default demo targets
+            cat > /tmp/urls.txt << 'EOF'
+          https://www.ycombinator.com/companies
+          https://news.ycombinator.com
+          EOF
+          fi
+
+          # Split into batches of 10 URLs each
+          BATCH_SIZE=10
+          URL_COUNT=$(wc -l < /tmp/urls.txt)
+          BATCH_COUNT=$(( (URL_COUNT + BATCH_SIZE - 1) / BATCH_SIZE ))
+          MAX_BATCHES="${{ github.event.inputs.parallel_batches || '3' }}"
+          BATCH_COUNT=$(( BATCH_COUNT > MAX_BATCHES ? MAX_BATCHES : BATCH_COUNT ))
+
+          echo "batch_count=${BATCH_COUNT}" >> $GITHUB_OUTPUT
+
+          # Create JSON array of batch indices
+          BATCHES=$(seq 0 $((BATCH_COUNT - 1)) | jq -R . | jq -sc .)
+          echo "batches=${BATCHES}" >> $GITHUB_OUTPUT
+
+          echo "Total URLs: ${URL_COUNT}, Batches: ${BATCH_COUNT}"
+
+      - name: Upload URL list
+        uses: actions/upload-artifact@v4
+        with:
+          name: url-list
+          path: /tmp/urls.txt
+          retention-days: 1
+
+  # ─── Parallel scrape workers ──────────────────────────────────────────────────
+  scrape:
+    name: Scrape Batch ${{ matrix.batch }}
+    runs-on: ubuntu-latest
+    needs: prepare
+    if: needs.prepare.outputs.batch_count != '0'
+    strategy:
+      matrix:
+        batch: ${{ fromJson(needs.prepare.outputs.batches) }}
+      fail-fast: false
+      max-parallel: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Download URL list
+        uses: actions/download-artifact@v4
+        with:
+          name: url-list
+          path: /tmp/
+
+      - name: Extract batch URLs
+        run: |
+          BATCH_SIZE=10
+          BATCH_NUM="${{ matrix.batch }}"
+          START=$(( BATCH_NUM * BATCH_SIZE + 1 ))
+          END=$(( START + BATCH_SIZE - 1 ))
+
+          sed -n "${START},${END}p" /tmp/urls.txt > /tmp/batch-urls.txt
+          echo "Batch ${{ matrix.batch }} URLs:"
+          cat /tmp/batch-urls.txt
+
+      - name: Run scrape batch
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          HUBSPOT_ACCESS_TOKEN: ${{ secrets.HUBSPOT_ACCESS_TOKEN }}
+          GITHUB_ACTIONS: 'true'
+          SCRAPE_ARTIFACT_PATH: ${{ env.ARTIFACT_PATH }}
+          NODE_ENV: production
+          SCRAPER_HEADLESS: 'true'
+          SCRAPER_CONCURRENCY: '2'
+        run: |
+          SCRAPE_TYPE="${{ github.event.inputs.scrape_type || 'company' }}"
+          npm run build
+          node dist/worker/run-scrape.js --type "$SCRAPE_TYPE" --file /tmp/batch-urls.txt
+
+      - name: Upload scrape results artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrape-results-batch-${{ matrix.batch }}
+          path: ${{ env.ARTIFACT_PATH }}
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ─── Aggregate results ────────────────────────────────────────────────────────
+  aggregate:
+    name: Aggregate Results
+    runs-on: ubuntu-latest
+    needs: scrape
+    if: always()
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Download all batch artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: scrape-results-batch-*
+          path: /tmp/results/
+
+      - name: Merge results
+        run: |
+          echo "=== Scrape Run Summary ===" > /tmp/summary.txt
+          echo "Date: $(date -u)" >> /tmp/summary.txt
+          echo "" >> /tmp/summary.txt
+
+          TOTAL_PROCESSED=0
+          TOTAL_FAILED=0
+
+          for f in /tmp/results/scrape-results-batch-*/*.json; do
+            if [ -f "$f" ]; then
+              BATCH_PROCESSED=$(jq -r '.processed // 0' "$f")
+              BATCH_FAILED=$(jq -r '.failed // 0' "$f")
+              TOTAL_PROCESSED=$((TOTAL_PROCESSED + BATCH_PROCESSED))
+              TOTAL_FAILED=$((TOTAL_FAILED + BATCH_FAILED))
+              echo "Batch $(dirname $f | xargs basename): processed=$BATCH_PROCESSED, failed=$BATCH_FAILED" >> /tmp/summary.txt
+            fi
+          done
+
+          echo "" >> /tmp/summary.txt
+          echo "TOTAL: processed=${TOTAL_PROCESSED}, failed=${TOTAL_FAILED}" >> /tmp/summary.txt
+          cat /tmp/summary.txt
+
+      - name: Upload aggregated summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrape-run-summary
+          path: /tmp/summary.txt
+          retention-days: 90
