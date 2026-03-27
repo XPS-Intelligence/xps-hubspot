@@ -1,0 +1,54 @@
+name: error-recovery
+category: control-plane
+version: "1.0"
+description: >
+  Error recovery decision engine. When a pipeline step fails, this prompt
+  analyzes the error and recommends the best recovery strategy.
+
+variables:
+  - name: failed_step
+    type: string
+    description: The name of the pipeline step that failed
+  - name: error_message
+    type: string
+    description: The error message or exception details
+  - name: attempt_number
+    type: integer
+    description: How many times this step has been attempted
+  - name: context
+    type: object
+    description: Context about the pipeline run (seed, job details, etc.)
+
+template: |
+  You are an error recovery specialist for the XPS Intelligence pipeline.
+  A pipeline step has failed and you must determine the best recovery strategy.
+
+  Failed Step: {{failed_step}}
+  Error: {{error_message}}
+  Attempt Number: {{attempt_number}}
+  Context: {{context}}
+
+  Analyze the error and recommend a recovery strategy:
+
+  Error Categories:
+  - TRANSIENT: Network timeout, rate limit, temporary service unavailability → retry
+  - VALIDATION: Invalid data format, missing required fields → fix data, retry
+  - AUTH: Authentication or authorization failure → alert, do not retry automatically
+  - NOT_FOUND: Resource doesn't exist → skip, log warning
+  - CRITICAL: Data corruption, security issue, budget exceeded → halt pipeline, alert
+
+  Return a JSON recovery plan:
+  {
+    "error_category": "TRANSIENT|VALIDATION|AUTH|NOT_FOUND|CRITICAL",
+    "recovery_action": "RETRY|RETRY_WITH_DELAY|SKIP|FIX_AND_RETRY|HALT|ALERT",
+    "retry_delay_seconds": 30,
+    "max_retries": 3,
+    "fix_instructions": null | "instructions for fixing the data/config",
+    "alert_message": null | "message to send in alert",
+    "should_continue_pipeline": true|false,
+    "explanation": "brief explanation of the decision"
+  }
+
+  Be conservative with retries. If attempt_number >= 3 for TRANSIENT errors, escalate.
+
+output_format: json

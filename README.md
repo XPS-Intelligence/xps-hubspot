@@ -200,3 +200,193 @@ railway.toml          Railway deployment config
 - **API**: Express.js + Zod validation
 - **Logging**: Winston (structured JSON in production)
 - **CI/CD**: GitHub Actions + Railway
+---
+
+## Full Stack Setup Guide
+
+### System Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    XPS Intelligence Stack                    │
+├──────────────┬──────────────┬──────────────┬────────────────┤
+│  Dashboard   │   Backend    │   Supabase   │   Integrations │
+│  (Next.js)   │  (Express)   │ (PostgreSQL) │                │
+│              │              │              │  • HubSpot CRM │
+│  /seeds      │  /api/v1/    │  leads       │  • OpenAI      │
+│  /leads      │   seeds      │  seeds       │  • Firecrawl   │
+│  /dispatch   │   leads      │  prompts     │  • n8n         │
+│  /prompts    │   prompts    │  pipeline_   │                │
+│  /chat       │   dispatch   │    _runs     │                │
+└──────────────┴──────────────┴──────────────┴────────────────┘
+```
+
+### Bootstrap Instructions
+
+#### 1. Backend Setup
+
+```bash
+# Clone and install
+git clone https://github.com/XPS-Intelligence/xps-hubspot.git
+cd xps-hubspot
+npm install
+
+# Configure environment variables
+cp .env.example .env
+# Edit .env with your credentials (see Environment Variables section)
+
+# Run database migrations
+npm run migrate
+
+# Start development server
+npm run dev
+```
+
+#### 2. Dashboard Setup
+
+```bash
+cd dashboard
+npm install
+cp .env.example .env.local
+# Set NEXT_PUBLIC_API_URL=http://localhost:3000/api/v1
+
+# Development
+npm run dev   # Visit http://localhost:3001
+
+# Production build (static export for GitHub Pages)
+npm run build
+```
+
+#### 3. Supabase Setup
+
+1. Create a Supabase project at https://supabase.com
+2. Run migrations in order:
+   ```bash
+   # Via Supabase CLI
+   supabase db push
+   # Or manually in the Supabase SQL editor:
+   # 1. supabase/migrations/001_initial_schema.sql
+   # 2. supabase/migrations/002_seeds_prompts.sql
+   ```
+3. Copy your project URL, anon key, and service role key
+
+#### 4. n8n Setup
+
+1. Install n8n: `npm install -g n8n` or use Docker
+2. Import flows from `n8n-flows/`:
+   - `seed-scrape-flow.json` – Main scraping trigger
+   - `hubspot-sync-flow.json` – CRM sync (runs every 4 hours)
+   - `enrichment-flow.json` – LLM enrichment (runs every 6 hours)
+3. Set environment variables in n8n:
+   - `XPS_API_URL` → Your backend API URL
+4. Add HTTP Header Auth credentials with your API token
+
+#### 5. Firecrawl Setup
+
+1. Sign up at https://firecrawl.dev and get your API key
+2. Update `firecrawl/config.json` with your settings
+3. Set `FIRECRAWL_API_KEY` in your environment
+4. The agent configuration in `firecrawl/agent-config.json` controls crawl depth and extraction rules
+
+#### 6. Dashboard Access
+
+| Route      | Description                          |
+|------------|--------------------------------------|
+| `/`        | Overview, pipeline status, KPIs      |
+| `/seeds`   | Manage scraping targets              |
+| `/seeds/new` | Add a new seed with full metadata  |
+| `/leads`   | View and filter scraped leads        |
+| `/dispatch`| Trigger pipeline runs manually       |
+| `/prompts` | Edit LLM prompt library              |
+| `/chat`    | Multi-agent chat interface           |
+
+### Environment Variables Reference
+
+#### Backend (`.env`)
+```
+# Supabase
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+
+# OpenAI
+OPENAI_API_KEY=sk-...
+
+# HubSpot
+HUBSPOT_ACCESS_TOKEN=pat-na1-...
+
+# App
+PORT=3000
+NODE_ENV=production
+API_AUTH_SECRET=your-jwt-secret
+```
+
+#### Dashboard (`.env.local`)
+```
+NEXT_PUBLIC_API_URL=https://your-api.example.com/api/v1
+NEXT_PUBLIC_CHAT_API_URL=https://your-groq-or-ollama-endpoint/chat
+```
+
+### GitHub Actions Setup
+
+#### Required Secrets
+Set these in your repository **Settings → Secrets and variables → Actions**:
+
+| Secret | Description |
+|--------|-------------|
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_ANON_KEY` | Supabase anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key |
+| `OPENAI_API_KEY` | OpenAI API key |
+| `HUBSPOT_ACCESS_TOKEN` | HubSpot private app token |
+| `XPS_API_URL` | Deployed API URL (for pipeline-dispatch.yml) |
+| `XPS_API_TOKEN` | API authentication token |
+
+#### Required Variables
+Set these in **Settings → Secrets and variables → Actions → Variables**:
+
+| Variable | Description |
+|----------|-------------|
+| `API_URL` | API URL for dashboard build (deploy-pages.yml) |
+
+#### Self-Hosted Runners
+
+To use self-hosted runners (for faster builds or private network access):
+1. Follow the GitHub docs to register a runner: https://docs.github.com/en/actions/hosting-your-own-runners
+2. In `.github/workflows/ci.yml`, change `runs-on: ubuntu-latest` to `runs-on: self-hosted`
+   (a comment near that line explains this)
+3. Ensure the runner has Node.js 20+, npm, and Playwright dependencies installed
+
+#### Workflows Overview
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `ci.yml` | Push/PR to main | Lint, typecheck, test, build |
+| `scrape.yml` | Daily 08:00 UTC + manual | Batch URL scraping |
+| `pipeline-dispatch.yml` | Manual + API + daily | Full pipeline with seed creation |
+| `deploy-pages.yml` | Push to main (dashboard/) | Deploy dashboard to GitHub Pages |
+
+### OpenAI GPT Action
+
+Import `schemas/openai-action-schema.json` as a Custom GPT Action to enable:
+- `list_leads` – Browse scraped leads
+- `create_seed` – Add scraping targets by voice or text
+- `dispatch_pipeline` – Trigger runs from ChatGPT
+- `get_pipeline_status` – Check run status
+- `list_prompts` – Browse the prompt library
+
+### Prompt Library
+
+Prompt templates are stored in `prompts/` as YAML files and can be loaded into the database via the dashboard (`/prompts`) or the API:
+
+```bash
+# Load prompts via API
+for f in prompts/*.yaml; do
+  name=$(yq .name $f)
+  template=$(yq .template $f)
+  curl -X POST $API_URL/prompts \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{\"name\":\"$name\",\"template\":\"$template\"}"
+done
+```

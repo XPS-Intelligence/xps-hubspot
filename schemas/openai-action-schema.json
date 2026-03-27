@@ -1,0 +1,334 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "XPS Intelligence Pipeline API",
+    "description": "GPT Action schema for read/write access to the XPS Intelligence lead scraping and CRM pipeline. Supports listing leads, managing seeds, dispatching pipeline runs, checking status, and managing prompts.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://{api_host}/api/v1",
+      "description": "XPS Intelligence API",
+      "variables": {
+        "api_host": {
+          "default": "xps-api.example.com",
+          "description": "API hostname"
+        }
+      }
+    }
+  ],
+  "security": [
+    { "bearerAuth": [] }
+  ],
+  "paths": {
+    "/leads": {
+      "get": {
+        "operationId": "list_leads",
+        "summary": "List leads",
+        "description": "Returns a paginated list of scraped leads with their status, score, and contact information.",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": { "type": "integer", "default": 1 },
+            "description": "Page number"
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": { "type": "integer", "default": 20, "maximum": 100 },
+            "description": "Number of leads per page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of leads",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PaginatedLeadsResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/seeds": {
+      "post": {
+        "operationId": "create_seed",
+        "summary": "Create a scraping seed",
+        "description": "Adds a new URL target with metadata for the scraping pipeline to process.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateSeedRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Seed created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SeedResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationError" }
+        }
+      }
+    },
+    "/dispatch": {
+      "post": {
+        "operationId": "dispatch_pipeline",
+        "summary": "Dispatch a pipeline run",
+        "description": "Triggers the scraping and lead processing pipeline for one or more seeds.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DispatchRequest" }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Pipeline run started",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PipelineRunResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/ValidationError" }
+        }
+      }
+    },
+    "/dispatch/runs/{id}": {
+      "get": {
+        "operationId": "get_pipeline_status",
+        "summary": "Get pipeline run status",
+        "description": "Returns the current status and results of a specific pipeline run.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" },
+            "description": "Pipeline run ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pipeline run status",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PipelineRunResponse" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/prompts": {
+      "get": {
+        "operationId": "list_prompts",
+        "summary": "List prompt templates",
+        "description": "Returns all prompt templates in the library, optionally filtered by category.",
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "schema": { "type": "string" },
+            "description": "Filter by category (e.g., extraction, enrichment, validation)"
+          },
+          {
+            "name": "active",
+            "in": "query",
+            "schema": { "type": "boolean" },
+            "description": "Return only active prompts"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of prompts",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PromptsResponse" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Supabase JWT or API token"
+      }
+    },
+    "schemas": {
+      "ApiResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "error": { "type": "string", "nullable": true },
+          "message": { "type": "string", "nullable": true },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Lead": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "source_url": { "type": "string", "format": "uri" },
+          "company_name": { "type": "string", "nullable": true },
+          "first_name": { "type": "string", "nullable": true },
+          "last_name": { "type": "string", "nullable": true },
+          "email": { "type": "string", "format": "email", "nullable": true },
+          "phone": { "type": "string", "nullable": true },
+          "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "validated", "rejected", "synced", "duplicate"]
+          },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PaginatedLeadsResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ApiResponse" },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "leads": { "type": "array", "items": { "$ref": "#/components/schemas/Lead" } },
+                  "total": { "type": "integer" },
+                  "page": { "type": "integer" },
+                  "pageSize": { "type": "integer" },
+                  "totalPages": { "type": "integer" }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "CreateSeedRequest": {
+        "type": "object",
+        "required": ["url"],
+        "properties": {
+          "url": { "type": "string", "format": "uri" },
+          "keywords": { "type": "array", "items": { "type": "string" } },
+          "key_phrases": { "type": "array", "items": { "type": "string" } },
+          "categories": { "type": "array", "items": { "type": "string" } },
+          "state": { "type": "string" },
+          "city": { "type": "string" },
+          "zip": { "type": "string" },
+          "industry": { "type": "string" },
+          "target_intent": { "type": "string" },
+          "desired_end_result": { "type": "string" },
+          "status": { "type": "string", "enum": ["active", "inactive", "archived"], "default": "active" }
+        }
+      },
+      "SeedResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ApiResponse" },
+          {
+            "type": "object",
+            "properties": {
+              "data": { "$ref": "#/components/schemas/CreateSeedRequest" }
+            }
+          }
+        ]
+      },
+      "DispatchRequest": {
+        "type": "object",
+        "required": ["seed_ids"],
+        "properties": {
+          "seed_ids": {
+            "type": "array",
+            "items": { "type": "string", "format": "uuid" },
+            "minItems": 1
+          },
+          "trigger_type": {
+            "type": "string",
+            "enum": ["manual", "scheduled", "api", "webhook"],
+            "default": "manual"
+          },
+          "metadata": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "PipelineRunResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ApiResponse" },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string", "format": "uuid" },
+                  "trigger_type": { "type": "string" },
+                  "seed_ids": { "type": "array", "items": { "type": "string", "format": "uuid" } },
+                  "status": { "type": "string", "enum": ["pending", "running", "completed", "failed"] },
+                  "started_at": { "type": "string", "format": "date-time", "nullable": true },
+                  "completed_at": { "type": "string", "format": "date-time", "nullable": true },
+                  "created_at": { "type": "string", "format": "date-time" }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "PromptsResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ApiResponse" },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string", "format": "uuid" },
+                    "name": { "type": "string" },
+                    "category": { "type": "string", "nullable": true },
+                    "template": { "type": "string" },
+                    "description": { "type": "string", "nullable": true },
+                    "is_active": { "type": "boolean" },
+                    "version": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "responses": {
+      "ValidationError": {
+        "description": "Validation error",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ApiResponse" }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Resource not found",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ApiResponse" }
+          }
+        }
+      }
+    }
+  }
+}

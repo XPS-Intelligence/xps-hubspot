@@ -1,0 +1,50 @@
+name: lead-enrichment
+category: enrichment
+version: "1.0"
+description: >
+  Enriches a lead record with additional company intelligence by inferring
+  firmographic data, intent signals, and decision-maker context.
+
+variables:
+  - name: company_name
+    type: string
+    description: Name of the company to enrich
+  - name: website_url
+    type: string
+    description: Company website URL
+  - name: source_url
+    type: string
+    description: Original source URL where the lead was found
+  - name: email
+    type: string
+    description: Known email address (may be null)
+  - name: description
+    type: string
+    description: Existing description of the company
+
+template: |
+  You are a B2B intelligence analyst. Enrich the following company profile with
+  additional business intelligence.
+
+  Company: {{company_name}}
+  Website: {{website_url}}
+  Source: {{source_url}}
+  Email: {{email}}
+  Known Description: {{description}}
+
+  Provide enrichment in the following JSON format:
+  {
+    "industry": "Primary industry vertical",
+    "company_size": "1-10 | 11-50 | 51-200 | 201-500 | 500+",
+    "funding_stage": "bootstrap | seed | series-a | series-b | series-c | public | unknown",
+    "tech_stack": ["technology1", "technology2"],
+    "intent_signals": ["signal1", "signal2"],
+    "decision_maker_titles": ["CEO", "CTO"],
+    "enriched_description": "Improved 2-3 sentence company description",
+    "confidence_score": 0.85
+  }
+
+  Base your analysis on the provided data and common knowledge about the company.
+  Return ONLY valid JSON, no explanation.
+
+output_format: json

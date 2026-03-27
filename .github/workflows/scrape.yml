@@ -21,6 +21,42 @@ on:
         required: false
         default: '3'
         type: string
+      keywords:
+        description: 'Comma-separated keywords to guide extraction'
+        required: false
+        type: string
+      key_phrases:
+        description: 'Comma-separated key phrases to match against content'
+        required: false
+        type: string
+      categories:
+        description: 'Comma-separated categories for classification'
+        required: false
+        type: string
+      state:
+        description: 'Target US state (e.g. CA, TX, NY)'
+        required: false
+        type: string
+      city:
+        description: 'Target city'
+        required: false
+        type: string
+      zip:
+        description: 'Target ZIP code'
+        required: false
+        type: string
+      industry:
+        description: 'Target industry vertical (e.g. Technology, Finance)'
+        required: false
+        type: string
+      target_intent:
+        description: 'Intent signal to detect (e.g. hiring, fundraising, expansion)'
+        required: false
+        type: string
+      desired_end_result:
+        description: 'Expected outcome of this scrape run'
+        required: false
+        type: string
 
 permissions:
   contents: read

@@ -1,0 +1,72 @@
+{
+  "version": "1.0",
+  "description": "Firecrawl agent builder configuration for XPS Intelligence autonomous scraping agents",
+  "agent": {
+    "name": "xps-lead-scraper",
+    "type": "crawl",
+    "max_depth": 3,
+    "max_pages": 100,
+    "respect_robots_txt": true,
+    "user_agent": "XPS-Intelligence-Bot/1.0 (compatible; lead-research; contact@xps-intelligence.com)"
+  },
+  "entry_points": {
+    "company_directory": {
+      "description": "Entry points for company directory pages",
+      "start_selectors": ["[class*='company-list']", "[class*='directory']", "ul.companies"],
+      "pagination": {
+        "type": "button",
+        "selector": "a[rel='next'], button[class*='next'], [class*='load-more']",
+        "max_pages": 20
+      }
+    },
+    "event_page": {
+      "description": "Entry points for event attendee/speaker pages",
+      "start_selectors": ["[class*='speakers']", "[class*='attendees']", "[class*='participants']"],
+      "pagination": {
+        "type": "url_pattern",
+        "pattern": "?page={n}",
+        "max_pages": 10
+      }
+    }
+  },
+  "extraction_agents": [
+    {
+      "id": "contact-extractor",
+      "trigger": "page_type == 'profile'",
+      "actions": [
+        { "type": "extract", "fields": ["name", "email", "company", "title", "linkedin"] },
+        { "type": "llm_enrich", "prompt_name": "lead-extraction" },
+        { "type": "validate", "min_score": 40 },
+        { "type": "submit", "endpoint": "/api/v1/jobs" }
+      ]
+    },
+    {
+      "id": "company-extractor",
+      "trigger": "page_type == 'company'",
+      "actions": [
+        { "type": "extract", "fields": ["company_name", "website", "email", "phone", "address"] },
+        { "type": "llm_enrich", "prompt_name": "lead-extraction" },
+        { "type": "validate", "min_score": 30 },
+        { "type": "submit", "endpoint": "/api/v1/jobs" }
+      ]
+    }
+  ],
+  "page_classification": {
+    "rules": [
+      { "pattern": "*/team/*", "type": "profile" },
+      { "pattern": "*/about/*", "type": "company" },
+      { "pattern": "*/speakers/*", "type": "profile" },
+      { "pattern": "*/company/*", "type": "company" },
+      { "pattern": "*/companies/*", "type": "company" },
+      { "pattern": "*/people/*", "type": "profile" },
+      { "pattern": "*/members/*", "type": "profile" }
+    ],
+    "default": "unknown"
+  },
+  "output": {
+    "webhook_url": "${XPS_API_URL}/jobs",
+    "auth_header": "Authorization",
+    "batch_size": 10,
+    "flush_interval_seconds": 30
+  }
+}

@@ -18,6 +18,8 @@ concurrency:
 jobs:
   lint-and-typecheck:
     name: Lint & Type Check
+    # To use self-hosted runners, replace 'ubuntu-latest' with 'self-hosted' (or a label
+    # like 'self-hosted, linux, x64'). See: https://docs.github.com/en/actions/hosting-your-own-runners
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

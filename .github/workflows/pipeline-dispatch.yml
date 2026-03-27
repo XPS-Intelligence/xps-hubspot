@@ -1,0 +1,174 @@
+name: Pipeline Dispatch
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'Target URL to scrape'
+        required: false
+        type: string
+      keywords:
+        description: 'Comma-separated keywords'
+        required: false
+        type: string
+      key_phrases:
+        description: 'Comma-separated key phrases'
+        required: false
+        type: string
+      categories:
+        description: 'Comma-separated categories'
+        required: false
+        type: string
+      state:
+        description: 'Target US state (e.g. CA)'
+        required: false
+        type: string
+      city:
+        description: 'Target city'
+        required: false
+        type: string
+      zip:
+        description: 'Target ZIP code'
+        required: false
+        type: string
+      industry:
+        description: 'Target industry vertical'
+        required: false
+        type: string
+      target_intent:
+        description: 'Intent signal to detect'
+        required: false
+        type: string
+      desired_end_result:
+        description: 'Desired outcome of this run'
+        required: false
+        type: string
+      scrape_type:
+        description: 'Scrape type'
+        required: false
+        default: 'company'
+        type: choice
+        options: [company, contact, event, custom]
+
+  repository_dispatch:
+    types: [pipeline-run]
+
+  schedule:
+    # Daily at 08:00 UTC
+    - cron: '0 8 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  # ─── Validate inputs ───────────────────────────────────────────────────────────
+  validate-inputs:
+    name: Validate Inputs
+    runs-on: ubuntu-latest
+    outputs:
+      has_url: ${{ steps.check.outputs.has_url }}
+      dispatch_payload: ${{ steps.check.outputs.dispatch_payload }}
+    steps:
+      - name: Check inputs
+        id: check
+        run: |
+          URL="${{ github.event.inputs.url || github.event.client_payload.url || '' }}"
+          HAS_URL="false"
+          if [ -n "$URL" ]; then
+            HAS_URL="true"
+            echo "Validated URL: $URL"
+          fi
+
+          echo "has_url=${HAS_URL}" >> $GITHUB_OUTPUT
+
+          # Build dispatch payload as JSON
+          PAYLOAD=$(jq -n \
+            --arg url "$URL" \
+            --arg keywords "${{ github.event.inputs.keywords || '' }}" \
+            --arg key_phrases "${{ github.event.inputs.key_phrases || '' }}" \
+            --arg categories "${{ github.event.inputs.categories || '' }}" \
+            --arg state "${{ github.event.inputs.state || '' }}" \
+            --arg city "${{ github.event.inputs.city || '' }}" \
+            --arg zip "${{ github.event.inputs.zip || '' }}" \
+            --arg industry "${{ github.event.inputs.industry || '' }}" \
+            --arg target_intent "${{ github.event.inputs.target_intent || '' }}" \
+            --arg desired_end_result "${{ github.event.inputs.desired_end_result || '' }}" \
+            --arg scrape_type "${{ github.event.inputs.scrape_type || 'company' }}" \
+            '{
+              url: $url,
+              keywords: (if $keywords != "" then ($keywords | split(",") | map(ltrimstr(" ") | rtrimstr(" "))) else [] end),
+              key_phrases: (if $key_phrases != "" then ($key_phrases | split(",") | map(ltrimstr(" ") | rtrimstr(" "))) else [] end),
+              categories: (if $categories != "" then ($categories | split(",") | map(ltrimstr(" ") | rtrimstr(" "))) else [] end),
+              state: (if $state != "" then $state else null end),
+              city: (if $city != "" then $city else null end),
+              zip: (if $zip != "" then $zip else null end),
+              industry: (if $industry != "" then $industry else null end),
+              target_intent: (if $target_intent != "" then $target_intent else null end),
+              desired_end_result: (if $desired_end_result != "" then $desired_end_result else null end),
+              scrape_type: $scrape_type
+            }')
+
+          echo "dispatch_payload=${PAYLOAD}" >> $GITHUB_OUTPUT
+          echo "Payload: $PAYLOAD"
+
+  # ─── Run pipeline ──────────────────────────────────────────────────────────────
+  run-pipeline:
+    name: Run Pipeline
+    runs-on: ubuntu-latest
+    needs: validate-inputs
+    steps:
+      - name: Create seed and dispatch pipeline
+        id: dispatch
+        run: |
+          API_URL="${{ secrets.XPS_API_URL || 'http://localhost:3000/api/v1' }}"
+          TOKEN="${{ secrets.XPS_API_TOKEN }}"
+          PAYLOAD='${{ needs.validate-inputs.outputs.dispatch_payload }}'
+
+          # Only create seed if URL is provided
+          if [ "${{ needs.validate-inputs.outputs.has_url }}" = "true" ]; then
+            echo "Creating seed..."
+            SEED_RESPONSE=$(curl -sf -X POST "$API_URL/seeds" \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "$PAYLOAD" || echo '{"success":false,"error":"API unreachable"}')
+            echo "Seed response: $SEED_RESPONSE"
+
+            SEED_ID=$(echo "$SEED_RESPONSE" | jq -r '.data.id // empty')
+
+            if [ -n "$SEED_ID" ]; then
+              echo "Dispatching pipeline for seed: $SEED_ID"
+              DISPATCH_RESPONSE=$(curl -sf -X POST "$API_URL/dispatch" \
+                -H "Authorization: Bearer $TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "{\"seed_ids\":[\"$SEED_ID\"],\"trigger_type\":\"api\"}" || echo '{"success":false}')
+              echo "Dispatch response: $DISPATCH_RESPONSE"
+              echo "run_id=$(echo $DISPATCH_RESPONSE | jq -r '.data.id // empty')" >> $GITHUB_OUTPUT
+            else
+              echo "::warning ::Could not create seed – API may be unavailable or URL was not provided"
+            fi
+          else
+            echo "No URL provided, triggering general pipeline dispatch..."
+            curl -sf -X POST "$API_URL/dispatch" \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Content-Type: application/json" \
+              -d '{"seed_ids":[],"trigger_type":"scheduled"}' || true
+          fi
+
+  # ─── Notify completion ─────────────────────────────────────────────────────────
+  notify-completion:
+    name: Notify Completion
+    runs-on: ubuntu-latest
+    needs: [validate-inputs, run-pipeline]
+    if: always()
+    steps:
+      - name: Report status
+        run: |
+          if [ "${{ needs.run-pipeline.result }}" = "success" ]; then
+            echo "::notice ::✅ Pipeline dispatch completed successfully"
+          else
+            echo "::warning ::⚠️ Pipeline dispatch completed with status: ${{ needs.run-pipeline.result }}"
+          fi
+
+          echo "Trigger: ${{ github.event_name }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
