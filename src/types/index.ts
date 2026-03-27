@@ -176,3 +176,91 @@ export interface DbLead {
   created_at: string;
   updated_at: string;
 }
+
+// ─── Seed ─────────────────────────────────────────────────────────────────────
+
+export interface DbSeed {
+  id: string;
+  url: string;
+  keywords: string[];
+  key_phrases: string[];
+  categories: string[];
+  state: string | null;
+  city: string | null;
+  zip: string | null;
+  industry: string | null;
+  target_intent: string | null;
+  desired_end_result: string | null;
+  status: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const SeedSchema = z.object({
+  url: z.string().url(),
+  keywords: z.array(z.string()).default([]),
+  key_phrases: z.array(z.string()).default([]),
+  categories: z.array(z.string()).default([]),
+  state: z.string().optional(),
+  city: z.string().optional(),
+  zip: z.string().optional(),
+  industry: z.string().optional(),
+  target_intent: z.string().optional(),
+  desired_end_result: z.string().optional(),
+  status: z.enum(['active', 'inactive', 'archived']).default('active'),
+});
+
+export type Seed = z.infer<typeof SeedSchema>;
+
+// ─── Prompt ───────────────────────────────────────────────────────────────────
+
+export interface DbPrompt {
+  id: string;
+  name: string;
+  category: string | null;
+  template: string;
+  variables: unknown[];
+  description: string | null;
+  is_active: boolean;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export const PromptSchema = z.object({
+  name: z.string().min(1),
+  category: z.string().optional(),
+  template: z.string().min(1),
+  variables: z.array(z.unknown()).default([]),
+  description: z.string().optional(),
+  is_active: z.boolean().default(true),
+  version: z.number().int().positive().default(1),
+});
+
+export type Prompt = z.infer<typeof PromptSchema>;
+
+// ─── Pipeline Run ─────────────────────────────────────────────────────────────
+
+export interface DbPipelineRun {
+  id: string;
+  trigger_type: string;
+  seed_ids: string[];
+  status: string;
+  started_at: string | null;
+  completed_at: string | null;
+  results: Record<string, unknown> | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export const PipelineRunSchema = z.object({
+  trigger_type: z.enum(['manual', 'scheduled', 'api', 'webhook']),
+  seed_ids: z.array(z.string().uuid()).min(1),
+  status: z.enum(['pending', 'running', 'completed', 'failed']).default('pending'),
+  started_at: z.string().datetime().optional(),
+  completed_at: z.string().datetime().optional(),
+  results: z.record(z.unknown()).optional(),
+});
+
+export type PipelineRun = z.infer<typeof PipelineRunSchema>;

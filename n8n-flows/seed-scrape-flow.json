@@ -1,0 +1,122 @@
+{
+  "name": "Seed Scrape Flow",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "seed-scrape",
+        "httpMethod": "POST",
+        "responseMode": "responseNode"
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "id": "node-webhook"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.XPS_API_URL }}/jobs",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "url", "value": "={{ $json.url }}" },
+            { "name": "type", "value": "={{ $json.type ?? 'company' }}" },
+            { "name": "priority", "value": "={{ $json.priority ?? 5 }}" },
+            { "name": "metadata", "value": "={{ $json.metadata ?? {} }}" }
+          ]
+        }
+      },
+      "name": "Submit Scrape Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [460, 300],
+      "id": "node-submit-job"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.data.status }}",
+              "operation": "equal",
+              "value2": "queued"
+            }
+          ]
+        }
+      },
+      "name": "Job Queued?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "id": "node-check-queued"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.XPS_API_URL }}/jobs",
+        "method": "GET",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "queryParameters": {
+          "parameters": [
+            { "name": "status", "value": "completed" }
+          ]
+        }
+      },
+      "name": "Poll Job Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 220],
+      "id": "node-poll-status"
+    },
+    {
+      "parameters": {
+        "amount": 10,
+        "unit": "seconds"
+      },
+      "name": "Wait 10s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [900, 380],
+      "id": "node-wait"
+    },
+    {
+      "parameters": {
+        "subject": "XPS Scrape Completed",
+        "message": "Scrape job {{ $json.data.jobId }} has completed successfully.\n\nSeed URL: {{ $('Webhook').item.json.url }}\nTimestamp: {{ new Date().toISOString() }}"
+      },
+      "name": "Notify Completion",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [1120, 220],
+      "id": "node-notify"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, jobId: $('Submit Scrape Job').item.json.data.jobId } }}"
+      },
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1120, 380],
+      "id": "node-respond"
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Submit Scrape Job", "type": "main", "index": 0 }]] },
+    "Submit Scrape Job": { "main": [[{ "node": "Job Queued?", "type": "main", "index": 0 }]] },
+    "Job Queued?": {
+      "main": [
+        [{ "node": "Poll Job Status", "type": "main", "index": 0 }],
+        [{ "node": "Respond to Webhook", "type": "main", "index": 0 }]
+      ]
+    },
+    "Poll Job Status": { "main": [[{ "node": "Notify Completion", "type": "main", "index": 0 }]] },
+    "Wait 10s": { "main": [[{ "node": "Poll Job Status", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" }
+}

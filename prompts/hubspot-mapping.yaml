@@ -1,0 +1,68 @@
+name: hubspot-mapping
+category: crm-mapping
+version: "1.0"
+description: >
+  Maps scraped and normalized lead data to HubSpot contact and company
+  field formats, ready for direct API submission.
+
+variables:
+  - name: lead
+    type: object
+    description: Normalized lead object (JSON string)
+  - name: enrichment
+    type: object
+    description: Optional enrichment data (JSON string, may be empty)
+
+template: |
+  You are a CRM data mapper. Transform the following lead data into HubSpot
+  contact and company properties format.
+
+  Lead:
+  {{lead}}
+
+  Enrichment:
+  {{enrichment}}
+
+  Map to HubSpot format:
+  {
+    "contact": {
+      "email": "business email",
+      "firstname": "first name",
+      "lastname": "last name",
+      "phone": "phone number",
+      "jobtitle": "inferred job title",
+      "linkedin_bio": "LinkedIn URL",
+      "website": "personal or company website",
+      "hs_lead_status": "NEW",
+      "lead_source": "XPS Scraper",
+      "description": "contact notes"
+    },
+    "company": {
+      "name": "company name",
+      "domain": "domain extracted from email or website",
+      "industry": "HubSpot industry category",
+      "numberofemployees": null,
+      "description": "company description",
+      "city": null,
+      "state": null,
+      "country": null
+    },
+    "custom_properties": {
+      "xps_score": 0,
+      "xps_source_url": "source URL",
+      "xps_enrichment_confidence": 0.0
+    }
+  }
+
+  Use HubSpot's industry categories. Infer missing fields where possible.
+  Return ONLY valid JSON.
+
+output_format: json
+hubspot_industry_categories:
+  - ACCOUNTING
+  - COMPUTER_SOFTWARE
+  - FINANCIAL_SERVICES
+  - HEALTH_CARE
+  - MARKETING_AND_ADVERTISING
+  - REAL_ESTATE
+  - TECHNOLOGY

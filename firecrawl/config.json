@@ -1,0 +1,88 @@
+{
+  "version": "1.0",
+  "description": "Firecrawl configuration for XPS Intelligence lead scraping",
+  "api": {
+    "base_url": "https://api.firecrawl.dev/v0",
+    "timeout_ms": 30000,
+    "max_retries": 3,
+    "retry_delay_ms": 2000
+  },
+  "rate_limits": {
+    "requests_per_minute": 20,
+    "concurrent_requests": 5,
+    "delay_between_requests_ms": 500
+  },
+  "scraping_defaults": {
+    "wait_for_load_ms": 2000,
+    "scroll_to_bottom": true,
+    "include_raw_html": true,
+    "include_markdown": true,
+    "remove_base64_images": true,
+    "only_main_content": false
+  },
+  "extraction_rules": {
+    "company": {
+      "selectors": {
+        "company_name": ["h1", "[class*='company-name']", "[class*='org-name']", "title"],
+        "description": ["[class*='description']", "[class*='about']", "meta[name='description']"],
+        "email": ["a[href^='mailto:']", "[class*='email']"],
+        "phone": ["a[href^='tel:']", "[class*='phone']", "[class*='contact']"],
+        "address": ["[class*='address']", "[class*='location']", "address"],
+        "linkedin": ["a[href*='linkedin.com']"],
+        "website": ["a[href*='http'][class*='website']", "link[rel='canonical']"]
+      },
+      "llm_extraction": {
+        "enabled": true,
+        "model": "gpt-4o-mini",
+        "schema": {
+          "company_name": "string",
+          "email": "string",
+          "phone": "string",
+          "address": "string",
+          "website_url": "string",
+          "linkedin_url": "string",
+          "description": "string"
+        }
+      }
+    },
+    "contact": {
+      "selectors": {
+        "name": ["[class*='name']", "h1", "h2"],
+        "title": ["[class*='title']", "[class*='role']", "[class*='position']"],
+        "email": ["a[href^='mailto:']"],
+        "linkedin": ["a[href*='linkedin.com/in/']"]
+      },
+      "llm_extraction": {
+        "enabled": true,
+        "model": "gpt-4o-mini",
+        "schema": {
+          "first_name": "string",
+          "last_name": "string",
+          "job_title": "string",
+          "email": "string",
+          "phone": "string",
+          "linkedin_url": "string",
+          "company_name": "string"
+        }
+      }
+    }
+  },
+  "filters": {
+    "exclude_urls": [
+      "*/login*",
+      "*/signup*",
+      "*/privacy*",
+      "*/terms*",
+      "*/cookie*"
+    ],
+    "require_text": true,
+    "min_content_length": 100,
+    "max_content_length": 500000
+  },
+  "output": {
+    "format": "json",
+    "include_metadata": true,
+    "include_links": true,
+    "include_screenshots": false
+  }
+}

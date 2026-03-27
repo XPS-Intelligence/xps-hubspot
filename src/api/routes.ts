@@ -11,9 +11,17 @@ import { getLeadsByStatus } from '../db/queries';
 import { requireAuth } from './middleware';
 import { createLogger } from '../logger';
 import type { ApiResponse } from '../types';
+import { seedRouter } from './seed-routes';
+import { promptRouter } from './prompt-routes';
+import { dispatchRouter } from './dispatch-routes';
 
 const log = createLogger('api:routes');
 export const router = Router();
+
+// ─── Sub-routers ──────────────────────────────────────────────────────────────
+router.use('/seeds', seedRouter);
+router.use('/prompts', promptRouter);
+router.use('/dispatch', dispatchRouter);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

@@ -1,0 +1,121 @@
+{
+  "name": "LLM Lead Enrichment Flow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "hours", "hoursInterval": 6 }] }
+      },
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "id": "node-schedule"
+    },
+    {
+      "parameters": {
+        "path": "enrich-leads",
+        "httpMethod": "POST"
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 460],
+      "id": "node-webhook"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.XPS_API_URL }}/leads",
+        "method": "GET",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "queryParameters": {
+          "parameters": [
+            { "name": "status", "value": "pending" },
+            { "name": "pageSize", "value": "50" }
+          ]
+        }
+      },
+      "name": "Get Pending Leads",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [460, 380],
+      "id": "node-get-leads"
+    },
+    {
+      "parameters": {
+        "batchSize": 1
+      },
+      "name": "Split Into Items",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [680, 380],
+      "id": "node-split"
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "model": "gpt-4o-mini",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a B2B lead enrichment assistant. Given lead data, extract and infer: industry vertical, company size estimate, funding stage, key decision makers, and intent signals. Return JSON only."
+            },
+            {
+              "role": "user",
+              "content": "Enrich this lead data:\n\nCompany: {{ $json.company_name }}\nURL: {{ $json.source_url }}\nEmail: {{ $json.email }}\nDescription: {{ $json.description }}\n\nReturn a JSON object with: industry, company_size, funding_stage, intent_signals[], enriched_description"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.3,
+          "maxTokens": 500
+        }
+      },
+      "name": "OpenAI Enrich Lead",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [900, 380],
+      "id": "node-openai"
+    },
+    {
+      "parameters": {
+        "jsCode": "const enriched = JSON.parse($input.item.json.message.content);\nreturn [{ json: { leadId: $('Split Into Items').item.json.id, enrichedData: enriched } }];"
+      },
+      "name": "Parse Enrichment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 380],
+      "id": "node-parse"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.XPS_API_URL }}/leads/{{ $json.leadId }}/enrich",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "enrichedData", "value": "={{ $json.enrichedData }}" }
+          ]
+        }
+      },
+      "name": "Update Lead with Enrichment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1340, 380],
+      "id": "node-update-lead"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": { "main": [[{ "node": "Get Pending Leads", "type": "main", "index": 0 }]] },
+    "Webhook Trigger": { "main": [[{ "node": "Get Pending Leads", "type": "main", "index": 0 }]] },
+    "Get Pending Leads": { "main": [[{ "node": "Split Into Items", "type": "main", "index": 0 }]] },
+    "Split Into Items": { "main": [[{ "node": "OpenAI Enrich Lead", "type": "main", "index": 0 }]] },
+    "OpenAI Enrich Lead": { "main": [[{ "node": "Parse Enrichment", "type": "main", "index": 0 }]] },
+    "Parse Enrichment": { "main": [[{ "node": "Update Lead with Enrichment", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" }
+}

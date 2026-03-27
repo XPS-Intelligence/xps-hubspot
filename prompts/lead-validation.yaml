@@ -1,0 +1,45 @@
+name: lead-validation
+category: validation
+version: "1.0"
+description: >
+  Validates a lead record for data quality, completeness, and legitimacy.
+  Returns a score from 0-100 and actionable validation notes.
+
+variables:
+  - name: lead
+    type: object
+    description: The lead object to validate (JSON string)
+
+template: |
+  You are a data quality validator for B2B leads. Analyze the following lead record
+  and assess its quality, completeness, and legitimacy.
+
+  Lead Data:
+  {{lead}}
+
+  Evaluate the lead on these criteria (each out of 100):
+  1. completeness - Are all important fields populated?
+  2. email_quality - Is the email real, business-domain (not gmail/yahoo)?
+  3. company_legitimacy - Does this appear to be a real business?
+  4. contact_quality - Is contact information specific and findable?
+  5. data_consistency - Are the fields internally consistent?
+
+  Return a JSON object:
+  {
+    "score": 0-100,
+    "is_valid": true|false,
+    "confidence": 0.0-1.0,
+    "reasons": ["reason1", "reason2"],
+    "suggested_fields": {
+      "field_name": "suggested_value"
+    },
+    "rejection_reason": null | "reason if rejected"
+  }
+
+  Mark as invalid (is_valid: false) if score < 40 or email is clearly fake.
+  Return ONLY valid JSON.
+
+output_format: json
+thresholds:
+  minimum_score: 40
+  auto_approve_score: 80

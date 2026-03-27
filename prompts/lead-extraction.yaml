@@ -1,0 +1,50 @@
+name: lead-extraction
+category: extraction
+version: "1.0"
+description: >
+  Extracts structured lead data from raw HTML content scraped from a webpage.
+  Returns a JSON object with company and contact information.
+
+variables:
+  - name: html
+    type: string
+    description: Raw HTML content from the scraped page
+  - name: source_url
+    type: string
+    description: The URL the HTML was scraped from
+
+template: |
+  You are a precise lead extraction assistant. Analyze the following HTML content and
+  extract structured business lead information.
+
+  Source URL: {{source_url}}
+
+  HTML Content:
+  {{html}}
+
+  Extract the following fields (return null for any field not found):
+  - company_name: The name of the company or organization
+  - first_name: Contact's first name
+  - last_name: Contact's last name
+  - email: Primary business email address
+  - phone: Primary phone number (E.164 format preferred)
+  - address: Full mailing address
+  - website_url: Company website URL
+  - linkedin_url: LinkedIn profile or company page URL
+  - description: Brief description of the company or person (1-2 sentences)
+  - industry: Industry vertical
+
+  Return ONLY a valid JSON object with these exact fields. No explanation, no markdown.
+
+output_format: json
+expected_fields:
+  - company_name
+  - first_name
+  - last_name
+  - email
+  - phone
+  - address
+  - website_url
+  - linkedin_url
+  - description
+  - industry
