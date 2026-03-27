@@ -82,7 +82,7 @@ jobs:
           echo "has_url=${HAS_URL}" >> $GITHUB_OUTPUT
 
           # Build dispatch payload as JSON
-          PAYLOAD=$(jq -n \
+          PAYLOAD=$(jq -cn \
             --arg url "$URL" \
             --arg keywords "${{ github.event.inputs.keywords || '' }}" \
             --arg key_phrases "${{ github.event.inputs.key_phrases || '' }}" \
