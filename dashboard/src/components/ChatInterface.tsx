@@ -28,10 +28,10 @@ export function ChatInterface() {
 
     try {
       if (!CHAT_API) {
-        // Echo mode when no chat API is configured
+        // Fallback echo mode when no chat API is configured
         setMessages((prev) => [
           ...prev,
-          { role: 'assistant', content: `(Echo) ${userMsg.content}` },
+          { role: 'assistant', content: `No chat API configured (NEXT_PUBLIC_CHAT_API_URL). Echo: ${userMsg.content}` },
         ]);
         return;
       }
